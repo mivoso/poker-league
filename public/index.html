@@ -127,6 +127,52 @@ table.lb td.pos{color:var(--muted); width:26px;}
 .famrow{display:flex; align-items:center; justify-content:space-between; margin-top:6px;}
 .famrow .cbtn{width:40px; height:40px; font-size:19px; background:var(--felt-deep);
   border:1px solid var(--line); color:var(--cream);}
+
+/* ---- Bankroll-Verlauf (Chart) ---- */
+.bchart{width:100%; height:auto; display:block; margin-top:2px;}
+.bchart .grid{stroke:var(--line-soft); stroke-width:1;}
+.bchart .zero{stroke:var(--line); stroke-width:1.2; stroke-dasharray:3 3;}
+.bchart .axt{fill:var(--dim); font-size:10px; font-variant-numeric:tabular-nums;}
+.bchart path.ln{fill:none; stroke-linejoin:round; stroke-linecap:round;}
+.blegend{display:flex; flex-wrap:wrap; gap:6px; margin-top:12px;}
+.bchip{display:inline-flex; align-items:center; gap:6px; font-size:12px; background:var(--felt-deep);
+  border:1px solid var(--line); border-radius:99px; padding:4px 9px; color:var(--cream);
+  cursor:pointer; opacity:.6; font-variant-numeric:tabular-nums;}
+.bchip.on{opacity:1; border-color:var(--gold);}
+.bchip .sw{width:10px; height:10px; border-radius:50%; flex:none;}
+
+/* ---- Beamer / TV Live-Modus ---- */
+#tv-root{display:none;}
+body.tv-on{overflow:hidden;}
+body.tv-on header.app, body.tv-on nav.tabs, body.tv-on .wrap{display:none !important;}
+body.tv-on #tv-root{display:block; position:fixed; inset:0; z-index:100;
+  background:radial-gradient(130% 110% at 50% 0%, var(--felt) 0%, var(--felt-deep) 68%);
+  padding:2.2vh 2.4vw;}
+.tv-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:2vh;}
+.tv-brand{font-size:2.1vh; letter-spacing:.22em; text-transform:uppercase; color:var(--gold); font-weight:800;}
+.tv-sub{font-size:1.3vh; color:var(--muted); letter-spacing:.14em; text-transform:uppercase; margin-top:.3vh;}
+.tv-right{display:flex; align-items:center; gap:1.6vw;}
+.tv-clock{font-size:3vh; font-weight:800; font-variant-numeric:tabular-nums; color:var(--cream);}
+.tv-exit{font-size:1.5vh; color:var(--muted); border:1px solid var(--line); background:transparent;
+  border-radius:8px; padding:.8vh 1vw; cursor:pointer;}
+.tv-grid{display:grid; grid-template-columns:1.1fr .9fr; gap:2vw; height:88vh;}
+.tv-col{min-height:0;}
+.tv-panel{background:var(--felt-card); border:1px solid var(--line-soft); border-radius:14px;
+  padding:2vh 1.6vw; height:100%; overflow:hidden; display:flex; flex-direction:column;}
+.tv-h{font-size:1.7vh; letter-spacing:.16em; text-transform:uppercase; color:var(--gold);
+  font-weight:800; margin-bottom:1.6vh; flex:none;}
+.tv-stats{display:flex; gap:1vw; margin-bottom:1.8vh; flex:none;}
+.tv-stat{flex:1; background:var(--felt-deep); border-radius:10px; padding:1.2vh .6vw; text-align:center;}
+.tv-stat .v{font-size:3.2vh; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1;}
+.tv-stat .l{font-size:1.15vh; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-top:.4vh;}
+.tv-list{flex:1; min-height:0; overflow:hidden;}
+.tv-row{display:flex; align-items:center; gap:1vw; padding:1.05vh 0;
+  border-bottom:1px solid var(--line-soft); font-size:2.4vh;}
+.tv-row .r{width:3.2vh; color:var(--muted); font-weight:800; text-align:center; font-variant-numeric:tabular-nums;}
+.tv-row .r.r1{color:var(--gold);}
+.tv-row .nm{flex:1; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.tv-row .val{font-variant-numeric:tabular-nums; font-weight:800;}
+.tv-row .sub{font-size:1.4vh; color:var(--muted); font-weight:600;}
 </style>
 </head>
 <body>
@@ -141,6 +187,7 @@ table.lb td.pos{color:var(--muted); width:26px;}
   <button id="tab-hist" onclick="setTab('hist')"><span class="ic">📋</span>Verlauf</button>
 </nav>
 <div class="toast" id="toast"></div>
+<div id="tv-root"></div>
 
 <!-- Firebase (compat SDK) für Cloud-Sync -->
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -212,6 +259,9 @@ function seedEvents(){
 
 let S={players:REGULARS.slice(),events:seedEvents(),active:null};
 let tab='game', lbMode='score', settling=false, timerIv=null;
+let bankSel=null, tvMode=false, tvClockIv=null;
+const PAL=['#e6b422','#4fb0e0','#ef6f6c','#7ed492','#c89be8','#f2a65a','#63d3c9','#f28ec0','#b7d24a','#9aa8ff','#e8d07a','#cf8bf3','#8fd0f0'];
+const colorFor=n=>PAL[((S.players.indexOf(n))%PAL.length+PAL.length)%PAL.length];
 
 const hasWS=typeof window.storage!=='undefined'&&window.storage;
 async function load(){
@@ -271,6 +321,7 @@ function render(){
   if(tab==='game'&&S.active&&!settling){
     timerIv=setInterval(()=>{const el=document.getElementById('elapsed'); if(el)el.textContent=elapsed();},30000);
   }
+  if(tvMode)renderTV();
 }
 
 /* ---------- SETUP ---------- */
@@ -388,6 +439,7 @@ function liveView(){
     </details>
   </div>
   <button class="btn" onclick="startSettle()">Session beenden → Abrechnung 🏁</button>
+  <button class="btn secondary" onclick="enterTV()">📺 Beamer-Modus (Live-Stand)</button>
   <button class="btn secondary" id="abort-btn" onclick="abortEvent(this)">Spieltag verwerfen</button>`;
 }
 function inc(i,k){const ev=S.active,p=ev.parts[i];p[k]++;
@@ -497,7 +549,115 @@ function lbView(){
     }).join('')}</table>
   </div>
   <div class="hint">W = Tagessiege · AI/RB = All-ins/Rebuys · Badge = noch nicht qualifiziert (5+ Events nötig) · ${evCount} Events gewertet</div>
+  <h2 class="sec">Bankroll-Verlauf</h2>
+  <div class="card">${bankChart()}</div>
+  <button class="btn secondary" onclick="enterTV()">📺 Beamer-Modus (Live-Stand)</button>
   <button class="btn secondary" onclick="copyText(lbWhatsApp())">📤 Leaderboard für WhatsApp kopieren</button>`;
+}
+
+/* ---------- BANKROLL-VERLAUF ---------- */
+function bankChart(){
+  const evs=S.events.filter(e=>e.finished).sort((a,b)=>a.nr-b.nr);
+  if(!evs.length)return '<div class="hint">Noch keine gewerteten Events.</div>';
+  const names=seasonTotals().map(t=>t.n);
+  if(!names.length)return '<div class="hint">Noch keine Wertung.</div>';
+  const series=names.map(n=>{
+    let c=0; const pts=[0];
+    evs.forEach(e=>{const p=e.parts.find(x=>x.n===n&&!x.g); c=Math.round((c+(p?p.net:0))*100)/100; pts.push(c);});
+    return {n,pts,end:pts[pts.length-1]};
+  });
+  const allv=series.flatMap(s=>s.pts).concat(0);
+  let mn=Math.min(...allv), mx=Math.max(...allv);
+  if(mn===mx){mn-=10;mx+=10;}
+  const pd=(mx-mn)*0.08||10; mn-=pd; mx+=pd;
+  const W=520,H=260,L=36,R=14,T=12,B=22, iw=W-L-R, ih=H-T-B, N=evs.length;
+  const X=i=>L+(N?iw*i/N:0), Y=v=>T+ih*(1-(v-mn)/(mx-mn));
+  let grid='';
+  for(let k=0;k<=4;k++){const v=mn+(mx-mn)*k/4, yy=Y(v);
+    grid+=`<line class="grid" x1="${L}" y1="${yy.toFixed(1)}" x2="${W-R}" y2="${yy.toFixed(1)}"/>`+
+      `<text class="axt" x="${L-5}" y="${(yy+3).toFixed(1)}" text-anchor="end">${Math.round(v)}</text>`;}
+  let xl='';
+  for(let i=0;i<=N;i++){ if(N>8&&i%2===1&&i!==N)continue;
+    xl+=`<text class="axt" x="${X(i).toFixed(1)}" y="${H-7}" text-anchor="middle">${i?('E'+evs[i-1].nr):'Start'}</text>`;}
+  const zero=`<line class="zero" x1="${L}" y1="${Y(0).toFixed(1)}" x2="${W-R}" y2="${Y(0).toFixed(1)}"/>`;
+  const lines=series.map(s=>{
+    const d=s.pts.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(' ');
+    const col=colorFor(s.n);
+    const op=bankSel?(bankSel===s.n?1:0.1):0.82, w=bankSel===s.n?3.4:2;
+    let lab='';
+    if(bankSel===s.n)lab=`<circle cx="${X(N).toFixed(1)}" cy="${Y(s.end).toFixed(1)}" r="3.6" fill="${col}"/>`+
+      `<text class="axt" x="${(X(N)-7).toFixed(1)}" y="${(Y(s.end)-7).toFixed(1)}" text-anchor="end" style="fill:${col};font-weight:800;font-size:12px">${esc(s.n)} ${fmtS(s.end)}</text>`;
+    return `<path class="ln" d="${d}" stroke="${col}" stroke-width="${w}" style="opacity:${op}"/>${lab}`;
+  }).join('');
+  const legend=series.slice().sort((a,b)=>b.end-a.end).map(s=>
+    `<span class="bchip ${bankSel===s.n?'on':''}" onclick="bankSel=bankSel==='${esc(s.n)}'?null:'${esc(s.n)}';render()">`+
+    `<span class="sw" style="background:${colorFor(s.n)}"></span>${esc(s.n)} <b>${fmtS(s.end)}</b></span>`).join('');
+  return `<svg class="bchart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${grid}${zero}${lines}${xl}</svg>`+
+    `<div class="blegend">${legend}</div>`+
+    `<div class="hint">Kumulierte Bankroll (€) über die Saison · Spieler antippen zum Hervorheben</div>`;
+}
+
+/* ---------- BEAMER / TV LIVE-MODUS ---------- */
+function enterTV(){tvMode=true;document.body.classList.add('tv-on');renderTV();
+  const el=document.documentElement; if(el.requestFullscreen)el.requestFullscreen().catch(()=>{});}
+function exitTV(){tvMode=false;clearInterval(tvClockIv);document.body.classList.remove('tv-on');
+  const r=document.getElementById('tv-root'); if(r)r.innerHTML='';
+  if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen().catch(()=>{});}
+function tvTick(){const c=document.getElementById('tv-clock'); if(c)c.textContent=nowT();
+  const e=document.getElementById('tv-elapsed'); if(e)e.textContent=elapsed();}
+function renderTV(){
+  const root=document.getElementById('tv-root'); if(!root)return;
+  const ev=S.active;
+  const season=seasonTotals().sort((a,b)=>b.score-a.score||b.bank-a.bank);
+  const seasonRows=season.slice(0,13).map((r,i)=>
+    `<div class="tv-row"><span class="r ${i===0?'r1':''}">${i+1}</span>`+
+    `<span class="nm">${esc(r.n)}</span>`+
+    `<span class="val">${r.score}<span class="sub"> Pkt</span></span>`+
+    `<span class="val ${r.bank<0?'neg':'posv'}" style="width:7vw;text-align:right">${fmt(r.bank)}</span></div>`).join('');
+  const seasonPanel=`<div class="tv-panel"><div class="tv-h">Saison · YTD · ${S.events.filter(e=>e.finished).length} Events</div>`+
+    `<div class="tv-list">${seasonRows||'<div class="hint">Noch keine Wertung.</div>'}</div></div>`;
+  let today;
+  if(ev){
+    const pot=ev.parts.reduce((s,p)=>s+BUYIN+p.rb*BUYIN,0);
+    const tAI=ev.parts.reduce((s,p)=>s+p.ai,0), tRB=ev.parts.reduce((s,p)=>s+p.rb,0);
+    let rows;
+    if(settling){
+      const sorted=ev.parts.map(p=>({n:p.n,g:p.g,net:p.gross===null?null:Math.round((p.gross-(BUYIN+p.rb*BUYIN))*100)/100}))
+        .sort((a,b)=>(b.net===null?-1e9:b.net)-(a.net===null?-1e9:a.net));
+      rows=sorted.map((p,i)=>`<div class="tv-row"><span class="r ${i===0&&p.net!==null?'r1':''}">${p.net===null?'·':i+1}</span>`+
+        `<span class="nm">${esc(p.n)}${p.g?' <span class="sub">Gast</span>':''}</span>`+
+        `<span class="val ${p.net===null?'':p.net<0?'neg':'posv'}">${p.net===null?'–':fmtS(p.net)}</span></div>`).join('');
+    } else {
+      rows=ev.parts.map(p=>`<div class="tv-row"><span class="r">•</span>`+
+        `<span class="nm">${esc(p.n)}${p.g?' <span class="sub">Gast</span>':''}</span>`+
+        `<span class="val"><span class="sub">Einsatz </span>${fmt(BUYIN+p.rb*BUYIN)}</span>`+
+        `<span class="val" style="width:6vw;text-align:right">${p.ai}/${p.rb}<span class="sub"> AI/RB</span></span></div>`).join('');
+    }
+    today=`<div class="tv-panel"><div class="tv-h">Heute · Event ${ev.nr} · ${esc(ev.loc)}${settling?' · Abrechnung':''}</div>`+
+      `<div class="tv-stats">`+
+        `<div class="tv-stat"><div class="v" id="tv-elapsed">${elapsed()||'–'}</div><div class="l">seit ${ev.start}</div></div>`+
+        `<div class="tv-stat"><div class="v">${ev.parts.length}</div><div class="l">Spieler</div></div>`+
+        `<div class="tv-stat"><div class="v">${Math.round(pot)} €</div><div class="l">Pot</div></div>`+
+        `<div class="tv-stat"><div class="v">${tAI}/${tRB}</div><div class="l">All-ins/Rebuys</div></div>`+
+      `</div><div class="tv-list">${rows}</div>`+
+      (ev.firstAI?`<div class="hint" style="font-size:1.4vh;margin-top:1vh;flex:none">⚡ Erster All-in: ${esc(ev.firstAI.p)} · ${ev.firstAI.t}${ev.firstRB?`   💸 Erster Rebuy: ${esc(ev.firstRB.p)} · ${ev.firstRB.t}`:''}</div>`:'')+
+      `</div>`;
+  } else {
+    const last=[...S.events].filter(e=>e.finished).sort((a,b)=>b.nr-a.nr)[0];
+    const win=last?[...last.parts].sort((a,b)=>b.net-a.net)[0]:null;
+    today=`<div class="tv-panel" style="justify-content:center;align-items:center;text-align:center">`+
+      `<div class="tv-h">Kein aktiver Spieltag</div>`+
+      (last?`<div style="font-size:1.8vh;color:var(--muted)">Letzter Spieltag · Event ${last.nr} · ${esc(last.loc)}</div>`+
+        `<div style="font-size:4vh;font-weight:800;margin-top:1.4vh">🏆 ${esc(win.n)}</div>`+
+        `<div class="posv" style="font-size:2.4vh;font-weight:800">${fmtS(win.net)}</div>`
+        :`<div class="hint">Starte einen Spieltag im Reiter „Spieltag".</div>`)+`</div>`;
+  }
+  root.innerHTML=`<div class="tv-head">`+
+    `<div><div class="tv-brand">♠ tesa Poker League 2026</div><div class="tv-sub">${ev?'Live-Stand':'Saison-Übersicht'}</div></div>`+
+    `<div class="tv-right"><div class="tv-clock" id="tv-clock">${nowT()}</div>`+
+    `<button class="tv-exit" onclick="exitTV()">✕ Beenden</button></div></div>`+
+    `<div class="tv-grid"><div class="tv-col">${today}</div><div class="tv-col">${seasonPanel}</div></div>`;
+  clearInterval(tvClockIv); tvClockIv=setInterval(tvTick,5000);
 }
 
 /* ---------- HISTORY ---------- */
@@ -640,6 +800,8 @@ function cloudPush(seed){
       .then(()=>cloudDot('ok')).catch(e=>{console.warn('Cloud-Push',e);cloudDot('err');});
   },seed?0:250);
 }
+
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&tvMode)exitTV();});
 
 load();
 cloudInit();
