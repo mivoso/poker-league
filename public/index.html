@@ -131,7 +131,7 @@ table.lb td.pos{color:var(--muted); width:26px;}
 </head>
 <body>
 <header class="app">
-  <div class="brand">♠ tesa Poker League 2026</div>
+  <div class="brand">♠ tesa Poker League 2026 <span id="cloud-dot" title="Cloud-Sync" style="font-size:.7em;opacity:.4;vertical-align:middle">☁</span></div>
   <div class="sub" id="hdrsub"></div>
 </header>
 <div class="wrap" id="app"></div>
@@ -142,8 +142,29 @@ table.lb td.pos{color:var(--muted); width:26px;}
 </nav>
 <div class="toast" id="toast"></div>
 
+<!-- Firebase (compat SDK) für Cloud-Sync -->
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+
 <script>
 const KEY='tpl-2026-v1';
+
+/* ============================================================
+   CLOUD-SYNC KONFIGURATION
+   Ersetze die Platzhalter unten durch deinen firebaseConfig
+   aus der Firebase Console (Projekteinstellungen → Meine Apps).
+   Lässt du apiKey leer, läuft die App wie bisher nur lokal.
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: ""
+};
+const LEAGUE_ID = 'tesa-2026';   // gemeinsames Liga-Dokument in Firestore
 const REGULARS=["Bernd","Frank","Kay","David","Alex K","Dirk W","Michi","Markus","Dirk H","Alex D","Ole","Udo","Thomas"];
 const LOCATIONS=["Frankie's Palace","Dirk's Eimsbush Residence","Fingers Palace","Forbeyond Arena","Winkler Mansion"];
 const BUYIN=10;
@@ -207,6 +228,7 @@ function save(){
     if(hasWS){try{await window.storage.set(KEY,j);ok=true;}catch(e){}}
     try{localStorage.setItem(KEY,j);ok=true;}catch(e){}
     if(!ok)toast('Speichern fehlgeschlagen – Backup sichern!');
+    cloudPush();
   },300);
 }
 function importBackup(){
@@ -562,7 +584,64 @@ function copyText(txt){
     ta.select();document.execCommand('copy');ta.remove();toast('Kopiert ✓');});
 }
 
+/* ---------- CLOUD SYNC (Firebase Firestore) ---------- */
+const cloud={ref:null,ready:false,ts:0,applying:false,
+  id:Math.random().toString(36).slice(2)+Date.now().toString(36)};
+
+function cloudDot(state){
+  const d=document.getElementById('cloud-dot'); if(!d)return;
+  const map={off:['☁','.35','Nur lokal (keine Cloud)'],
+    connecting:['☁','.6','Cloud verbindet …'],
+    ok:['☁︎','1','Cloud synchronisiert'],
+    err:['⚠','1','Cloud-Fehler – nur lokal gespeichert']};
+  const m=map[state]||map.off; d.textContent=m[0]; d.style.opacity=m[1];
+  d.style.color=state==='err'?'var(--red)':state==='ok'?'var(--green-ok)':'';
+  d.title=m[2];
+}
+
+function cloudInit(){
+  if(typeof firebase==='undefined'||!firebaseConfig.apiKey){cloudDot('off');return;}
+  cloudDot('connecting');
+  try{
+    firebase.initializeApp(firebaseConfig);
+    const ref=firebase.firestore().collection('leagues').doc(LEAGUE_ID);
+    cloud.ref=ref;
+    firebase.auth().signInAnonymously().catch(e=>{console.warn('Cloud-Auth',e);cloudDot('err');});
+    firebase.auth().onAuthStateChanged(u=>{ if(u&&!cloud.ready){cloud.ready=true; cloudListen();} });
+  }catch(e){console.warn('Cloud-Init',e);cloudDot('err');}
+}
+
+function cloudListen(){
+  cloud.ref.onSnapshot(snap=>{
+    if(!snap.exists){ cloudDot('ok'); cloudPush(true); return; }   // Cloud leer → aktuellen Stand hochladen
+    const d=snap.data();
+    if(!d||typeof d.ts!=='number'||typeof d.blob!=='string'){cloudDot('ok');return;}
+    if(d.origin===cloud.id){cloud.ts=Math.max(cloud.ts,d.ts);cloudDot('ok');return;} // eigenes Echo
+    if(d.ts<=cloud.ts){cloudDot('ok');return;}                     // nicht neuer → ignorieren
+    try{
+      const inc=JSON.parse(d.blob);
+      if(!inc||!inc.events||!inc.players){cloudDot('ok');return;}
+      cloud.ts=d.ts; cloud.applying=true;
+      S=inc;
+      try{localStorage.setItem(KEY,d.blob);}catch(e){}
+      render(); cloud.applying=false; cloudDot('ok');
+    }catch(e){cloud.applying=false;cloudDot('ok');}
+  },err=>{console.warn('Cloud-Listen',err);cloudDot('err');});
+}
+
+let cloudPushT=null;
+function cloudPush(seed){
+  if(!cloud.ready||!cloud.ref||cloud.applying)return;
+  clearTimeout(cloudPushT);
+  cloudPushT=setTimeout(()=>{
+    const ts=Date.now(); cloud.ts=ts;
+    cloud.ref.set({blob:JSON.stringify(S),ts,origin:cloud.id,updatedAt:new Date().toISOString()})
+      .then(()=>cloudDot('ok')).catch(e=>{console.warn('Cloud-Push',e);cloudDot('err');});
+  },seed?0:250);
+}
+
 load();
+cloudInit();
 
 if('serviceWorker' in navigator&&location.protocol==='https:'){
   window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
