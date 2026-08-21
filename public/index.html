@@ -148,31 +148,40 @@ body.tv-on header.app, body.tv-on nav.tabs, body.tv-on .wrap{display:none !impor
 body.tv-on #tv-root{display:block; position:fixed; inset:0; z-index:100;
   background:radial-gradient(130% 110% at 50% 0%, var(--felt) 0%, var(--felt-deep) 68%);
   padding:2.2vh 2.4vw;}
-.tv-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:2vh;}
-.tv-brand{font-size:2.1vh; letter-spacing:.22em; text-transform:uppercase; color:var(--gold); font-weight:800;}
-.tv-sub{font-size:1.3vh; color:var(--muted); letter-spacing:.14em; text-transform:uppercase; margin-top:.3vh;}
+.tv-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:2vh; gap:2vw;}
+.tv-brand{font-size:2.4vmin; letter-spacing:.22em; text-transform:uppercase; color:var(--gold); font-weight:800;}
+.tv-sub{font-size:1.4vmin; color:var(--muted); letter-spacing:.14em; text-transform:uppercase; margin-top:.3vh;}
 .tv-right{display:flex; align-items:center; gap:1.6vw;}
-.tv-clock{font-size:3vh; font-weight:800; font-variant-numeric:tabular-nums; color:var(--cream);}
-.tv-exit{font-size:1.5vh; color:var(--muted); border:1px solid var(--line); background:transparent;
-  border-radius:8px; padding:.8vh 1vw; cursor:pointer;}
+.tv-clock{font-size:3.2vmin; font-weight:800; font-variant-numeric:tabular-nums; color:var(--cream);}
+.tv-exit{font-size:1.7vmin; color:var(--muted); border:1px solid var(--line); background:transparent;
+  border-radius:8px; padding:.8vh 1.4vw; cursor:pointer; white-space:nowrap;}
 .tv-grid{display:grid; grid-template-columns:1.1fr .9fr; gap:2vw; height:88vh;}
 .tv-col{min-height:0;}
 .tv-panel{background:var(--felt-card); border:1px solid var(--line-soft); border-radius:14px;
-  padding:2vh 1.6vw; height:100%; overflow:hidden; display:flex; flex-direction:column;}
-.tv-h{font-size:1.7vh; letter-spacing:.16em; text-transform:uppercase; color:var(--gold);
+  padding:2vh 1.4vw; height:100%; overflow:hidden; display:flex; flex-direction:column;}
+.tv-h{font-size:1.9vmin; letter-spacing:.16em; text-transform:uppercase; color:var(--gold);
   font-weight:800; margin-bottom:1.6vh; flex:none;}
 .tv-stats{display:flex; gap:1vw; margin-bottom:1.8vh; flex:none;}
-.tv-stat{flex:1; background:var(--felt-deep); border-radius:10px; padding:1.2vh .6vw; text-align:center;}
-.tv-stat .v{font-size:3.2vh; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1;}
-.tv-stat .l{font-size:1.15vh; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-top:.4vh;}
+.tv-stat{flex:1; min-width:0; background:var(--felt-deep); border-radius:10px; padding:1.2vh .6vw; text-align:center;}
+.tv-stat .v{font-size:3.4vmin; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1;}
+.tv-stat .l{font-size:1.25vmin; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-top:.4vh;}
 .tv-list{flex:1; min-height:0; overflow:hidden;}
-.tv-row{display:flex; align-items:center; gap:1vw; padding:1.05vh 0;
-  border-bottom:1px solid var(--line-soft); font-size:2.4vh;}
-.tv-row .r{width:3.2vh; color:var(--muted); font-weight:800; text-align:center; font-variant-numeric:tabular-nums;}
+.tv-row{display:flex; align-items:center; gap:1.4vw; padding:1.05vh 0;
+  border-bottom:1px solid var(--line-soft); font-size:2.6vmin;}
+.tv-row .r{width:3.4vmin; flex:none; color:var(--muted); font-weight:800; text-align:center; font-variant-numeric:tabular-nums;}
 .tv-row .r.r1{color:var(--gold);}
-.tv-row .nm{flex:1; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-.tv-row .val{font-variant-numeric:tabular-nums; font-weight:800;}
-.tv-row .sub{font-size:1.4vh; color:var(--muted); font-weight:600;}
+.tv-row .nm{flex:1; min-width:0; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.tv-row .val{font-variant-numeric:tabular-nums; font-weight:800; white-space:nowrap; flex:none;}
+.tv-row .sub{font-size:1.6vmin; color:var(--muted); font-weight:600;}
+@media (max-aspect-ratio:1/1){
+  body.tv-on #tv-root{overflow-y:auto;}
+  .tv-grid{grid-template-columns:1fr; height:auto; gap:2.4vh;}
+  .tv-panel{height:auto;}
+  .tv-brand{font-size:4.4vmin;} .tv-sub{font-size:2.6vmin;} .tv-clock{font-size:5vmin;}
+  .tv-exit{font-size:2.8vmin;} .tv-h{font-size:3vmin;}
+  .tv-stat .v{font-size:5.2vmin;} .tv-stat .l{font-size:2vmin;}
+  .tv-row{font-size:4.2vmin; gap:3vw;} .tv-row .r{width:6vmin;} .tv-row .sub{font-size:2.7vmin;}
+}
 </style>
 </head>
 <body>
@@ -605,8 +614,8 @@ function renderTV(){
   const seasonRows=season.slice(0,13).map((r,i)=>
     `<div class="tv-row"><span class="r ${i===0?'r1':''}">${i+1}</span>`+
     `<span class="nm">${esc(r.n)}</span>`+
-    `<span class="val" style="width:5vw;text-align:right"><span class="sub">${r.score} Pkt</span></span>`+
-    `<span class="val ${r.bank<0?'neg':'posv'}" style="width:7vw;text-align:right">${fmt(r.bank)}</span></div>`).join('');
+    `<span class="val"><span class="sub">${r.score} Pkt</span></span>`+
+    `<span class="val ${r.bank<0?'neg':'posv'}">${fmt(r.bank)}</span></div>`).join('');
   const seasonPanel=`<div class="tv-panel"><div class="tv-h">Saison · YTD · nach Bankroll · ${S.events.filter(e=>e.finished).length} Events</div>`+
     `<div class="tv-list">${seasonRows||'<div class="hint">Noch keine Wertung.</div>'}</div></div>`;
   let today;
@@ -624,7 +633,7 @@ function renderTV(){
       rows=ev.parts.map(p=>`<div class="tv-row"><span class="r">•</span>`+
         `<span class="nm">${esc(p.n)}${p.g?' <span class="sub">Gast</span>':''}</span>`+
         `<span class="val"><span class="sub">Einsatz </span>${fmt(BUYIN+p.rb*BUYIN)}</span>`+
-        `<span class="val" style="width:6vw;text-align:right">${p.ai}/${p.rb}<span class="sub"> AI/RB</span></span></div>`).join('');
+        `<span class="val">${p.ai}/${p.rb}<span class="sub"> AI/RB</span></span></div>`).join('');
     }
     today=`<div class="tv-panel"><div class="tv-h">Heute · Event ${ev.nr} · ${esc(ev.loc)}${settling?' · Abrechnung':''}</div>`+
       `<div class="tv-stats">`+
@@ -633,16 +642,16 @@ function renderTV(){
         `<div class="tv-stat"><div class="v">${Math.round(pot)} €</div><div class="l">Pot</div></div>`+
         `<div class="tv-stat"><div class="v">${tAI}/${tRB}</div><div class="l">All-ins/Rebuys</div></div>`+
       `</div><div class="tv-list">${rows}</div>`+
-      (ev.firstAI?`<div class="hint" style="font-size:1.4vh;margin-top:1vh;flex:none">⚡ Erster All-in: ${esc(ev.firstAI.p)} · ${ev.firstAI.t}${ev.firstRB?`   💸 Erster Rebuy: ${esc(ev.firstRB.p)} · ${ev.firstRB.t}`:''}</div>`:'')+
+      (ev.firstAI?`<div class="hint" style="font-size:1.8vmin;margin-top:1vh;flex:none">⚡ Erster All-in: ${esc(ev.firstAI.p)} · ${ev.firstAI.t}${ev.firstRB?`   💸 Erster Rebuy: ${esc(ev.firstRB.p)} · ${ev.firstRB.t}`:''}</div>`:'')+
       `</div>`;
   } else {
     const last=[...S.events].filter(e=>e.finished).sort((a,b)=>b.nr-a.nr)[0];
     const win=last?[...last.parts].sort((a,b)=>b.net-a.net)[0]:null;
     today=`<div class="tv-panel" style="justify-content:center;align-items:center;text-align:center">`+
       `<div class="tv-h">Kein aktiver Spieltag</div>`+
-      (last?`<div style="font-size:1.8vh;color:var(--muted)">Letzter Spieltag · Event ${last.nr} · ${esc(last.loc)}</div>`+
-        `<div style="font-size:4vh;font-weight:800;margin-top:1.4vh">🏆 ${esc(win.n)}</div>`+
-        `<div class="posv" style="font-size:2.4vh;font-weight:800">${fmtS(win.net)}</div>`
+      (last?`<div style="font-size:2.4vmin;color:var(--muted)">Letzter Spieltag · Event ${last.nr} · ${esc(last.loc)}</div>`+
+        `<div style="font-size:5.4vmin;font-weight:800;margin-top:1.4vh">🏆 ${esc(win.n)}</div>`+
+        `<div class="posv" style="font-size:3.2vmin;font-weight:800">${fmtS(win.net)}</div>`
         :`<div class="hint">Starte einen Spieltag im Reiter „Spieltag".</div>`)+`</div>`;
   }
   root.innerHTML=`<div class="tv-head">`+
