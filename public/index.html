@@ -268,7 +268,7 @@ function seedEvents(){
 
 let S={players:REGULARS.slice(),events:seedEvents(),active:null};
 let tab='game', lbMode='score', settling=false, timerIv=null;
-let bankSel=null, tvMode=false, tvClockIv=null;
+let bankSel=new Set(), bankMode='line', tvMode=false, tvClockIv=null;
 const PAL=['#e6b422','#4fb0e0','#ef6f6c','#7ed492','#c89be8','#f2a65a','#63d3c9','#f28ec0','#b7d24a','#9aa8ff','#e8d07a','#cf8bf3','#8fd0f0'];
 const colorFor=n=>PAL[((S.players.indexOf(n))%PAL.length+PAL.length)%PAL.length];
 
@@ -558,45 +558,96 @@ function lbView(){
 }
 
 /* ---------- BANKROLL-VERLAUF ---------- */
-function bankChart(){
+const CH={W:520,H:260,L:36,R:14,T:12,B:22};
+function toggleBank(n){ if(bankSel.has(n))bankSel.delete(n); else bankSel.add(n); render(); }
+function bankData(){
   const evs=S.events.filter(e=>e.finished).sort((a,b)=>a.nr-b.nr);
-  if(!evs.length)return '<div class="hint">Noch keine gewerteten Events.</div>';
   const names=seasonTotals().map(t=>t.n);
-  if(!names.length)return '<div class="hint">Noch keine Wertung.</div>';
-  const series=names.map(n=>{
-    let c=0; const pts=[0];
-    evs.forEach(e=>{const p=e.parts.find(x=>x.n===n&&!x.g); c=Math.round((c+(p?p.net:0))*100)/100; pts.push(c);});
-    return {n,pts,end:pts[pts.length-1]};
+  const data=names.map(n=>{
+    let c=0; const cumPts=[0], per=[];
+    evs.forEach(e=>{const p=e.parts.find(x=>x.n===n&&!x.g); const net=p?(p.net||0):0; per.push(net); c=Math.round((c+net)*100)/100; cumPts.push(c);});
+    return {n,per,cumPts,end:cumPts[cumPts.length-1]};
   });
-  const allv=series.flatMap(s=>s.pts).concat(0);
-  let mn=Math.min(...allv), mx=Math.max(...allv);
-  if(mn===mx){mn-=10;mx+=10;}
-  const pd=(mx-mn)*0.08||10; mn-=pd; mx+=pd;
-  const W=520,H=260,L=36,R=14,T=12,B=22, iw=W-L-R, ih=H-T-B, N=evs.length;
-  const X=i=>L+(N?iw*i/N:0), Y=v=>T+ih*(1-(v-mn)/(mx-mn));
-  let grid='';
-  for(let k=0;k<=4;k++){const v=mn+(mx-mn)*k/4, yy=Y(v);
-    grid+=`<line class="grid" x1="${L}" y1="${yy.toFixed(1)}" x2="${W-R}" y2="${yy.toFixed(1)}"/>`+
-      `<text class="axt" x="${L-5}" y="${(yy+3).toFixed(1)}" text-anchor="end">${Math.round(v)}</text>`;}
-  let xl='';
-  for(let i=0;i<=N;i++){ if(N>8&&i%2===1&&i!==N)continue;
+  return {evs,data};
+}
+function chScale(mn,mx){ if(mn===mx){mn-=10;mx+=10;} const pd=(mx-mn)*0.08||10; mn-=pd; mx+=pd;
+  const ih=CH.H-CH.T-CH.B; return {mn,mx,Y:v=>CH.T+ih*(1-(v-mn)/(mx-mn))}; }
+function chGridY(sc){ let g=''; const {W,L,R}=CH;
+  for(let k=0;k<=4;k++){const v=sc.mn+(sc.mx-sc.mn)*k/4, yy=sc.Y(v);
+    g+=`<line class="grid" x1="${L}" y1="${yy.toFixed(1)}" x2="${W-R}" y2="${yy.toFixed(1)}"/>`+
+       `<text class="axt" x="${L-5}" y="${(yy+3).toFixed(1)}" text-anchor="end">${Math.round(v)}</text>`;}
+  return g; }
+
+function bankChart(){
+  const {evs,data}=bankData();
+  if(!evs.length)return '<div class="hint">Noch keine gewerteten Events.</div>';
+  if(!data.length)return '<div class="hint">Noch keine Wertung.</div>';
+  const toggle=`<div class="toggle-lb" style="margin-bottom:12px">`+
+    `<button class="${bankMode==='line'?'on':''}" onclick="bankMode='line';render()">📈 Verlauf</button>`+
+    `<button class="${bankMode==='bar'?'on':''}" onclick="bankMode='bar';render()">📊 Balken</button></div>`;
+  const svg=bankMode==='bar'?bankBars(evs,data):bankLines(evs,data);
+  const legend=data.slice().sort((a,b)=>b.end-a.end).map(s=>
+    `<span class="bchip ${bankSel.has(s.n)?'on':''}" onclick="toggleBank('${esc(s.n)}')">`+
+    `<span class="sw" style="background:${colorFor(s.n)}"></span>${esc(s.n)} <b>${fmtS(s.end)}</b></span>`).join('');
+  const clr=bankSel.size?`<span class="bchip" onclick="bankSel.clear();render()" style="opacity:1;border-color:var(--gold)">✕ Auswahl (${bankSel.size})</span>`:'';
+  const hint=bankMode==='bar'
+    ? (bankSel.size? 'Balken: Netto je Event pro ausgewähltem Spieler (grün +, rot −) · mehrere Spieler zum Vergleichen'
+                   : 'Balken: Anzahl Spieler im Plus (grün) bzw. Minus (rot) je Event · Spieler antippen für Einzel-Vergleich')
+    : (bankSel.size? 'Kumulierte Bankroll (€) · ausgewählte Spieler hervorgehoben'
+                   : 'Kumulierte Bankroll (€) über die Saison · Spieler antippen zum Vergleichen (mehrere möglich)');
+  return toggle+svg+`<div class="blegend">${clr}${legend}</div><div class="hint">${hint}</div>`;
+}
+
+function bankLines(evs,data){
+  const {W,H,L,R}=CH, N=evs.length, iw=W-L-R, X=i=>L+(N?iw*i/N:0);
+  const allv=data.flatMap(s=>s.cumPts).concat(0);
+  const sc=chScale(Math.min(...allv),Math.max(...allv));
+  const grid=chGridY(sc), zero=`<line class="zero" x1="${L}" y1="${sc.Y(0).toFixed(1)}" x2="${W-R}" y2="${sc.Y(0).toFixed(1)}"/>`;
+  let xl=''; for(let i=0;i<=N;i++){ if(N>8&&i%2===1&&i!==N)continue;
     xl+=`<text class="axt" x="${X(i).toFixed(1)}" y="${H-7}" text-anchor="middle">${i?('E'+evs[i-1].nr):'Start'}</text>`;}
-  const zero=`<line class="zero" x1="${L}" y1="${Y(0).toFixed(1)}" x2="${W-R}" y2="${Y(0).toFixed(1)}"/>`;
-  const lines=series.map(s=>{
-    const d=s.pts.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(' ');
-    const col=colorFor(s.n);
-    const op=bankSel?(bankSel===s.n?1:0.1):0.82, w=bankSel===s.n?3.4:2;
+  const anySel=bankSel.size>0;
+  const lines=data.map(s=>{
+    const d=s.cumPts.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)} ${sc.Y(v).toFixed(1)}`).join(' ');
+    const col=colorFor(s.n), on=bankSel.has(s.n);
+    const op=anySel?(on?1:0.09):0.82, w=on?3.4:2;
     let lab='';
-    if(bankSel===s.n)lab=`<circle cx="${X(N).toFixed(1)}" cy="${Y(s.end).toFixed(1)}" r="3.6" fill="${col}"/>`+
-      `<text class="axt" x="${(X(N)-7).toFixed(1)}" y="${(Y(s.end)-7).toFixed(1)}" text-anchor="end" style="fill:${col};font-weight:800;font-size:12px">${esc(s.n)} ${fmtS(s.end)}</text>`;
+    if(on)lab=`<circle cx="${X(N).toFixed(1)}" cy="${sc.Y(s.end).toFixed(1)}" r="3.6" fill="${col}"/>`+
+      `<text class="axt" x="${(X(N)-7).toFixed(1)}" y="${(sc.Y(s.end)-7).toFixed(1)}" text-anchor="end" style="fill:${col};font-weight:800;font-size:12px">${esc(s.n)} ${fmtS(s.end)}</text>`;
     return `<path class="ln" d="${d}" stroke="${col}" stroke-width="${w}" style="opacity:${op}"/>${lab}`;
   }).join('');
-  const legend=series.slice().sort((a,b)=>b.end-a.end).map(s=>
-    `<span class="bchip ${bankSel===s.n?'on':''}" onclick="bankSel=bankSel==='${esc(s.n)}'?null:'${esc(s.n)}';render()">`+
-    `<span class="sw" style="background:${colorFor(s.n)}"></span>${esc(s.n)} <b>${fmtS(s.end)}</b></span>`).join('');
-  return `<svg class="bchart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${grid}${zero}${lines}${xl}</svg>`+
-    `<div class="blegend">${legend}</div>`+
-    `<div class="hint">Kumulierte Bankroll (€) über die Saison · Spieler antippen zum Hervorheben</div>`;
+  return `<svg class="bchart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${grid}${zero}${lines}${xl}</svg>`;
+}
+
+function bankBars(evs,data){
+  const {W,H,L,R}=CH, N=evs.length, iw=W-L-R, slot=iw/N;
+  const sel=[...bankSel], bars=[], labels=[]; let scale;
+  if(sel.length){
+    const sd=sel.map(n=>data.find(d=>d.n===n)).filter(Boolean);
+    const vals=sd.flatMap(s=>s.per).concat(0);
+    scale=chScale(Math.min(...vals),Math.max(...vals));
+    const G=sd.length, gw=slot*0.74, bw=gw/G, y0=scale.Y(0);
+    for(let i=0;i<N;i++)for(let j=0;j<G;j++){
+      const v=sd[j].per[i], x=L+slot*i+(slot-gw)/2+j*bw, y1=scale.Y(v);
+      bars.push({x:x+bw*0.08, w:bw*0.84, y:Math.min(y0,y1), h:Math.abs(y1-y0), col:colorFor(sd[j].n)});
+    }
+  } else {
+    let mx=1;
+    const cnt=evs.map((e,i)=>{let plus=0,minus=0;
+      data.forEach(s=>{const v=s.per[i]; if(v>0)plus++; else if(v<0)minus++;});
+      mx=Math.max(mx,plus,minus); return {plus,minus};});
+    scale=chScale(-mx,mx);
+    const bw=slot*0.5, y0=scale.Y(0);
+    cnt.forEach((c,i)=>{const xc=L+slot*i+slot/2, yp=scale.Y(c.plus), ym=scale.Y(-c.minus);
+      if(c.plus){bars.push({x:xc-bw/2,w:bw,y:yp,h:y0-yp,col:'#5fae7d'}); labels.push({x:xc,y:yp-4,t:'+'+c.plus,col:'#9fd8b4'});}
+      if(c.minus){bars.push({x:xc-bw/2,w:bw,y:y0,h:ym-y0,col:'#c8412f'}); labels.push({x:xc,y:ym+12,t:'−'+c.minus,col:'#e8907f'});}
+    });
+  }
+  const grid=chGridY(scale), zero=`<line class="zero" x1="${L}" y1="${scale.Y(0).toFixed(1)}" x2="${W-R}" y2="${scale.Y(0).toFixed(1)}"/>`;
+  let xl=''; for(let i=0;i<N;i++){ if(N>10&&i%2===1)continue;
+    xl+=`<text class="axt" x="${(L+slot*i+slot/2).toFixed(1)}" y="${H-7}" text-anchor="middle">E${evs[i].nr}</text>`;}
+  const rects=bars.map(b=>`<rect x="${b.x.toFixed(1)}" y="${b.y.toFixed(1)}" width="${b.w.toFixed(1)}" height="${Math.max(.5,b.h).toFixed(1)}" rx="1.5" fill="${b.col}"/>`).join('');
+  const lab=labels.map(l=>`<text x="${l.x.toFixed(1)}" y="${l.y.toFixed(1)}" text-anchor="middle" style="fill:${l.col};font-weight:800;font-size:11px">${l.t}</text>`).join('');
+  return `<svg class="bchart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${grid}${zero}${rects}${lab}${xl}</svg>`;
 }
 
 /* ---------- BEAMER / TV LIVE-MODUS ---------- */
