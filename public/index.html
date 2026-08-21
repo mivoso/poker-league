@@ -591,7 +591,7 @@ function bankChart(){
     `<span class="sw" style="background:${colorFor(s.n)}"></span>${esc(s.n)} <b>${fmtS(s.end)}</b></span>`).join('');
   const clr=bankSel.size?`<span class="bchip" onclick="bankSel.clear();render()" style="opacity:1;border-color:var(--gold)">✕ Auswahl (${bankSel.size})</span>`:'';
   const hint=bankMode==='bar'
-    ? (bankSel.size? 'Balken: Netto je Event pro ausgewähltem Spieler (grün +, rot −) · mehrere Spieler zum Vergleichen'
+    ? (bankSel.size? 'Balken: Netto (€, gerundet) je Event pro ausgewähltem Spieler · mehrere Spieler zum Vergleichen'
                    : 'Balken: Anzahl Spieler im Plus (grün) bzw. Minus (rot) je Event · Spieler antippen für Einzel-Vergleich')
     : (bankSel.size? 'Kumulierte Bankroll (€) · ausgewählte Spieler hervorgehoben'
                    : 'Kumulierte Bankroll (€) über die Saison · Spieler antippen zum Vergleichen (mehrere möglich)');
@@ -625,10 +625,12 @@ function bankBars(evs,data){
     const sd=sel.map(n=>data.find(d=>d.n===n)).filter(Boolean);
     const vals=sd.flatMap(s=>s.per).concat(0);
     scale=chScale(Math.min(...vals),Math.max(...vals));
-    const G=sd.length, gw=slot*0.74, bw=gw/G, y0=scale.Y(0);
+    const G=sd.length, gw=slot*0.74, bw=gw/G, y0=scale.Y(0), showLab=G<=4;
     for(let i=0;i<N;i++)for(let j=0;j<G;j++){
-      const v=sd[j].per[i], x=L+slot*i+(slot-gw)/2+j*bw, y1=scale.Y(v);
-      bars.push({x:x+bw*0.08, w:bw*0.84, y:Math.min(y0,y1), h:Math.abs(y1-y0), col:colorFor(sd[j].n)});
+      const v=sd[j].per[i], x=L+slot*i+(slot-gw)/2+j*bw, y1=scale.Y(v), bx=x+bw*0.08, bw2=bw*0.84;
+      bars.push({x:bx, w:bw2, y:Math.min(y0,y1), h:Math.abs(y1-y0), col:colorFor(sd[j].n)});
+      if(showLab&&v){const up=v>0, ly=up?Math.max(CH.T+8,y1-3):Math.min(CH.H-CH.B-2,y1+9);
+        labels.push({x:bx+bw2/2, y:ly, t:(up?'+':'−')+Math.round(Math.abs(v)), col:'#f2ebdc', s:9});}
     }
   } else {
     let mx=1;
@@ -646,7 +648,7 @@ function bankBars(evs,data){
   let xl=''; for(let i=0;i<N;i++){ if(N>10&&i%2===1)continue;
     xl+=`<text class="axt" x="${(L+slot*i+slot/2).toFixed(1)}" y="${H-7}" text-anchor="middle">E${evs[i].nr}</text>`;}
   const rects=bars.map(b=>`<rect x="${b.x.toFixed(1)}" y="${b.y.toFixed(1)}" width="${b.w.toFixed(1)}" height="${Math.max(.5,b.h).toFixed(1)}" rx="1.5" fill="${b.col}"/>`).join('');
-  const lab=labels.map(l=>`<text x="${l.x.toFixed(1)}" y="${l.y.toFixed(1)}" text-anchor="middle" style="fill:${l.col};font-weight:800;font-size:11px">${l.t}</text>`).join('');
+  const lab=labels.map(l=>`<text x="${l.x.toFixed(1)}" y="${l.y.toFixed(1)}" text-anchor="middle" style="fill:${l.col};font-weight:800;font-size:${l.s||11}px">${l.t}</text>`).join('');
   return `<svg class="bchart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${grid}${zero}${rects}${lab}${xl}</svg>`;
 }
 
