@@ -529,23 +529,16 @@ function seasonTotals(){
   return Object.values(map).filter(t=>t.ev>0);
 }
 function lbView(){
-  const rows=seasonTotals();
-  rows.sort(lbMode==='score'?(a,b)=>b.score-a.score||b.bank-a.bank:(a,b)=>b.bank-a.bank);
+  const rows=seasonTotals().sort((a,b)=>b.bank-a.bank||b.score-a.score);
   const evCount=S.events.filter(e=>e.finished).length;
-  return `<h2 class="sec">Saison-Leaderboard · YTD</h2>
-  <div class="toggle-lb">
-    <button class="${lbMode==='score'?'on':''}" onclick="lbMode='score';render()">🏆 Punkte</button>
-    <button class="${lbMode==='bank'?'on':''}" onclick="lbMode='bank';render()">💰 Bankroll</button>
-  </div>
+  return `<h2 class="sec">Saison-Leaderboard · YTD · nach Bankroll</h2>
   <div class="card" style="padding:8px 12px">
-    <table class="lb"><tr><th></th><th>Spieler</th><th>${lbMode==='score'?'Pkt':'€'}</th><th>${lbMode==='score'?'€':'Pkt'}</th><th>W</th><th>Ev</th><th>AI</th><th>RB</th></tr>
+    <table class="lb"><tr><th></th><th>Spieler</th><th>€</th><th>Pkt</th><th>W</th><th>Ev</th><th>AI</th><th>RB</th></tr>
     ${rows.map((r,i)=>{
       const qual=r.ev>=5;
-      const c1=lbMode==='score'?r.score:`<span class="${r.bank<0?'neg':'posv'}">${fmt(r.bank)}</span>`;
-      const c2=lbMode==='score'?`<span class="${r.bank<0?'neg':'posv'}">${fmt(r.bank)}</span>`:r.score;
       return `<tr><td class="pos ${i===0?'pos1':''}">${i+1}</td>
       <td>${esc(r.n)}${qual?'':'<span class="badge">'+r.ev+'/5</span>'}</td>
-      <td>${c1}</td><td>${c2}</td><td>${r.wins}</td><td>${r.ev}</td><td>${r.ai}</td><td>${r.rb}</td></tr>`;
+      <td><span class="${r.bank<0?'neg':'posv'}">${fmt(r.bank)}</span></td><td>${r.score}</td><td>${r.wins}</td><td>${r.ev}</td><td>${r.ai}</td><td>${r.rb}</td></tr>`;
     }).join('')}</table>
   </div>
   <div class="hint">W = Tagessiege · AI/RB = All-ins/Rebuys · Badge = noch nicht qualifiziert (5+ Events nötig) · ${evCount} Events gewertet</div>
@@ -608,13 +601,13 @@ function tvTick(){const c=document.getElementById('tv-clock'); if(c)c.textConten
 function renderTV(){
   const root=document.getElementById('tv-root'); if(!root)return;
   const ev=S.active;
-  const season=seasonTotals().sort((a,b)=>b.score-a.score||b.bank-a.bank);
+  const season=seasonTotals().sort((a,b)=>b.bank-a.bank||b.score-a.score);
   const seasonRows=season.slice(0,13).map((r,i)=>
     `<div class="tv-row"><span class="r ${i===0?'r1':''}">${i+1}</span>`+
     `<span class="nm">${esc(r.n)}</span>`+
-    `<span class="val">${r.score}<span class="sub"> Pkt</span></span>`+
+    `<span class="val" style="width:5vw;text-align:right"><span class="sub">${r.score} Pkt</span></span>`+
     `<span class="val ${r.bank<0?'neg':'posv'}" style="width:7vw;text-align:right">${fmt(r.bank)}</span></div>`).join('');
-  const seasonPanel=`<div class="tv-panel"><div class="tv-h">Saison · YTD · ${S.events.filter(e=>e.finished).length} Events</div>`+
+  const seasonPanel=`<div class="tv-panel"><div class="tv-h">Saison · YTD · nach Bankroll · ${S.events.filter(e=>e.finished).length} Events</div>`+
     `<div class="tv-list">${seasonRows||'<div class="hint">Noch keine Wertung.</div>'}</div></div>`;
   let today;
   if(ev){
@@ -732,10 +725,10 @@ function evWhatsApp(id){
   return t;
 }
 function lbWhatsApp(top){
-  const rows=seasonTotals().sort((a,b)=>b.score-a.score||b.bank-a.bank);
+  const rows=seasonTotals().sort((a,b)=>b.bank-a.bank||b.score-a.score);
   const list=top?rows.slice(0,top):rows;
-  let t=`📊 *Saison ${top?'Top '+top:'Leaderboard'} (Punkte):*\n`;
-  list.forEach((r,i)=>{t+=`${i+1}. ${r.n} – ${r.score} Pkt (${fmt(r.bank)})${r.ev<5?' *':''}\n`;});
+  let t=`📊 *Saison ${top?'Top '+top:'Leaderboard'} (Bankroll):*\n`;
+  list.forEach((r,i)=>{t+=`${i+1}. ${r.n} – ${fmt(r.bank)} · ${r.score} Pkt${r.ev<5?' *':''}\n`;});
   if(!top)t+='\n* = noch keine 5 Events';
   return t;
 }
