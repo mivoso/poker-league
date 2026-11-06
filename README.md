@@ -77,3 +77,16 @@ Die App lädt beim nächsten Start mit Netz automatisch die neue Version.
   6. nur ab 10 Spielern (2 Pkt); sonst 0
 - Wertung eines Spieltags ab 6 Spielern (Gäste zählen nicht)
 - Saison-Qualifikation ab 5 Events
+
+## Wochenendwertung & Turniere
+
+- Beim Start eines Spieltags wählt man **Cash (Liga)** oder **Turnier**.
+- Cash-Games zählen wie bisher für die Saison (Event-Nummer läuft weiter).
+  Turniere haben eine eigene Zählung (Turnier 1, 2 …) und zählen **nicht** für die Saison.
+- Turnier: Buy-in 10 €, Rebuys à 10 €, Auszahlung 50/30/20 an die Top 3
+  (bei 2 Spielern 70/30). Platzierung über die Ausscheide-Reihenfolge („Raus“).
+- Wochenende = Name + Zeitraum (Ranking → Wochenende). Alle Spiele im Zeitraum
+  zählen, pro Spieltag abwählbar.
+- Wochenendpunkte je Spiel: 15/10/8/6/4/2 für Platz 1–6, unabhängig von der
+  Spielerzahl, Cash und Turnier gleich gewichtet.
+- Gesamtranking: Punkte, bei Gleichstand Netto-€ übers Wochenende, dann Siege.

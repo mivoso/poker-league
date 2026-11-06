@@ -128,6 +128,25 @@ table.lb td.pos{color:var(--muted); width:26px;}
 .famrow .cbtn{width:40px; height:40px; font-size:19px; background:var(--felt-deep);
   border:1px solid var(--line); color:var(--cream);}
 
+/* ---- Turnier / Wochenende ---- */
+.outbtn{white-space:nowrap; margin-top:4px; padding:4px 10px; border-radius:8px; font-size:12px; font-weight:800;
+  background:transparent; border:1px solid var(--red); color:#e8907f;}
+.prow.out{opacity:.55;}
+.prow .place{font-size:13px; color:var(--gold); font-weight:800;}
+.typebadge{display:inline-block; font-size:10px; padding:2px 7px; border-radius:99px; margin-left:6px;
+  vertical-align:1px; font-weight:700; letter-spacing:.04em;}
+.typebadge.cash{border:1px solid var(--line); color:var(--muted);}
+.typebadge.tour{background:var(--gold); color:#2b1f08;}
+.typebadge.wk{border:1px solid var(--gold); color:var(--gold);}
+.chk{display:flex; align-items:center; gap:10px; margin-top:12px; font-size:15px;}
+.chk input{width:22px; height:22px; accent-color:var(--gold);}
+.matrix{width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; font-size:13px;}
+.matrix th,.matrix td{padding:6px 3px; text-align:center; border-bottom:1px solid var(--line-soft);}
+.matrix th{font-size:10px; color:var(--muted); font-weight:600; letter-spacing:.04em;}
+.matrix td:first-child,.matrix th:first-child{text-align:left; font-weight:700;}
+.matrix td.z{color:var(--dim);}
+.mwrap{overflow-x:auto;}
+
 /* ---- Bankroll-Verlauf (Chart) ---- */
 .bchart{width:100%; height:auto; display:block; margin-top:2px;}
 .bchart .grid{stroke:var(--line-soft); stroke-width:1;}
@@ -192,7 +211,7 @@ body.tv-on #tv-root{display:block; position:fixed; inset:0; z-index:100;
 <div class="wrap" id="app"></div>
 <nav class="tabs">
   <button id="tab-game" onclick="setTab('game')"><span class="ic">🃏</span>Spieltag</button>
-  <button id="tab-lb" onclick="setTab('lb')"><span class="ic">🏆</span>Saison</button>
+  <button id="tab-lb" onclick="setTab('lb')"><span class="ic">🏆</span>Ranking</button>
   <button id="tab-hist" onclick="setTab('hist')"><span class="ic">📋</span>Verlauf</button>
 </nav>
 <div class="toast" id="toast"></div>
@@ -266,8 +285,59 @@ function seedEvents(){
  ];
 }
 
-let S={players:REGULARS.slice(),events:seedEvents(),active:null};
+let S={players:REGULARS.slice(),events:seedEvents(),active:null,weekends:[]};
 let tab='game', lbMode='score', settling=false, timerIv=null;
+let lbView2='season', wkSel=null, wkEdit=false;
+
+/* ---------- Spieltyp & Wochenende ---------- */
+const WK_PTS=[15,10,8,6,4,2];                       // Wochenendpunkte Platz 1–6, unabhängig von der Spielerzahl
+const wkPoints=rank=>WK_PTS[rank-1]||0;
+const PAYOUT=[0.5,0.3,0.2];                         // Turnier-Auszahlung Top 3
+const isCash=e=>!e||e.type!=='tourney';
+const isTour=e=>!!e&&e.type==='tourney';
+const evLabel=e=>(isTour(e)?'Turnier ':'Event ')+e.nr;
+const evShort=e=>(isTour(e)?'T':'E')+e.nr;
+const doneEvents=()=>S.events.filter(e=>e.finished);
+const cashEvents=()=>doneEvents().filter(isCash);
+function normalize(){
+  if(!Array.isArray(S.weekends))S.weekends=[];
+  if(!Array.isArray(S.events))S.events=[];
+}
+function nextNr(type){return S.events.filter(e=>type==='tourney'?isTour(e):isCash(e)).length+1;}
+const wkById=id=>S.weekends.find(w=>w.id===id)||null;
+const inRange=(w,d)=>!!d&&d>=w.from&&d<=w.to;
+function wkForDate(d){return S.weekends.find(w=>inRange(w,d))||null;}
+// Ein Event gehört zum Wochenende, wenn es explizit zugeordnet ist,
+// oder (ohne Zuordnung) wenn sein Datum im Zeitraum liegt. wk:null = bewusst ausgeschlossen.
+function inWeekend(e,w){
+  if(!w)return false;
+  if(e.wk!==undefined)return e.wk===w.id;
+  return inRange(w,e.date);
+}
+function wkOfEvent(e){return S.weekends.find(w=>inWeekend(e,w))||null;}
+function curWeekend(){
+  if(S.active){const w=wkOfEvent(S.active); if(w)return w;}
+  return wkForDate(todayD());
+}
+function wkGames(w){
+  return doneEvents().filter(e=>inWeekend(e,w))
+    .sort((a,b)=>(a.date+(a.start||'')).localeCompare(b.date+(b.start||''))||a.id-b.id);
+}
+function wkTotals(w){
+  const games=wkGames(w), map={};
+  games.forEach(e=>e.parts.forEach(p=>{
+    if(p.g)return;
+    const t=map[p.n]||(map[p.n]={n:p.n,pts:0,net:0,wins:0,games:0,per:{}});
+    const pts=wkPoints(p.rank);
+    t.pts+=pts; t.net=Math.round((t.net+(p.net||0))*100)/100; t.games++;
+    if(p.rank===1)t.wins++;
+    t.per[e.id]=pts;
+  }));
+  const rows=Object.values(map).sort((a,b)=>b.pts-a.pts||b.net-a.net||b.wins-a.wins);
+  let rank=0; rows.forEach((r,i)=>{const pr=rows[i-1];
+    if(!pr||r.pts!==pr.pts||r.net!==pr.net||r.wins!==pr.wins)rank=i+1; r.rank=rank;});
+  return {games,rows};
+}
 let bankSel=new Set(), bankMode='line', tvMode=false, tvClockIv=null;
 const PAL=['#e6b422','#4fb0e0','#ef6f6c','#7ed492','#c89be8','#f2a65a','#63d3c9','#f28ec0','#b7d24a','#9aa8ff','#e8d07a','#cf8bf3','#8fd0f0'];
 const colorFor=n=>PAL[((S.players.indexOf(n))%PAL.length+PAL.length)%PAL.length];
@@ -278,6 +348,7 @@ async function load(){
   if(hasWS){try{const r=await window.storage.get(KEY); if(r&&r.value)raw=r.value;}catch(e){}}
   if(!raw){try{raw=localStorage.getItem(KEY);}catch(e){}}
   if(raw){try{S=JSON.parse(raw);}catch(e){}}
+  normalize();
   render();
 }
 let saveT=null;
@@ -294,7 +365,7 @@ function save(){
 function importBackup(){
   const v=document.getElementById('imp-in').value.trim(); if(!v){toast('Nichts eingefügt');return;}
   try{const o=JSON.parse(v); if(!o.events||!o.players)throw 0;
-    S=o;save();render();toast('Backup geladen ✓');}
+    S=o;normalize();save();render();toast('Backup geladen ✓');}
   catch(e){toast('Ungültiges Backup');}
 }
 
@@ -320,12 +391,13 @@ function render(){
   document.getElementById('tab-game').classList.toggle('on',tab==='game');
   document.getElementById('tab-lb').classList.toggle('on',tab==='lb');
   document.getElementById('tab-hist').classList.toggle('on',tab==='hist');
-  const done=S.events.filter(e=>e.finished).length;
-  document.getElementById('hdrsub').textContent=done+' Events gespielt · Saison 2026';
+  const done=cashEvents().length, tours=doneEvents().filter(isTour).length;
+  const cw=curWeekend();
+  document.getElementById('hdrsub').textContent=done+' Events gespielt'+(tours?' · '+tours+' Turnier'+(tours>1?'e':''):'')+' · Saison 2026'+(cw?' · 🎉 '+cw.name:'');
   const app=document.getElementById('app');
   clearInterval(timerIv);
-  if(tab==='game') app.innerHTML=S.active?(settling?settleView():liveView()):setupView();
-  else if(tab==='lb') app.innerHTML=lbView();
+  if(tab==='game') app.innerHTML=S.active?(isTour(S.active)?tourLiveView():(settling?settleView():liveView())):setupView();
+  else if(tab==='lb') app.innerHTML=lbView2==='wk'?wkView():lbView();
   else app.innerHTML=histView();
   if(tab==='game'&&S.active&&!settling){
     timerIv=setInterval(()=>{const el=document.getElementById('elapsed'); if(el)el.textContent=elapsed();},30000);
@@ -335,15 +407,38 @@ function render(){
 
 /* ---------- SETUP ---------- */
 let sel=new Set(), guestList=[];
+let setupF={type:'cash',date:null,loc:null,locNew:'',start:null,wkOn:true};
+function keepSetup(){        // Formularwerte vor dem Neu-Rendern merken
+  const g=id=>document.getElementById(id);
+  if(g('ev-date'))setupF.date=g('ev-date').value;
+  if(g('ev-loc'))setupF.loc=g('ev-loc').value;
+  if(g('ev-loc-new'))setupF.locNew=g('ev-loc-new').value;
+  if(g('ev-start'))setupF.start=g('ev-start').value;
+  if(g('ev-wk'))setupF.wkOn=g('ev-wk').checked;
+}
+function setType(t){keepSetup();setupF.type=t;render();}
 function setupView(){
-  const nr=S.events.length+1;
-  return `<h2 class="sec">Neuer Spieltag · Event ${nr}</h2>
+  const tour=setupF.type==='tourney';
+  const nr=nextNr(setupF.type);
+  const date=setupF.date||todayD();
+  const w=wkForDate(date);
+  const locSel=setupF.loc||LOCATIONS[0];
+  return `<h2 class="sec">Neuer Spieltag · ${tour?'Turnier':'Event'} ${nr}</h2>
+  <div class="toggle-lb">
+    <button class="${tour?'':'on'}" onclick="setType('cash')">💵 Cash (Liga)</button>
+    <button class="${tour?'on':''}" onclick="setType('tourney')">🏆 Turnier</button>
+  </div>
+  <div class="hint" style="margin:-4px 0 10px">${tour
+    ?`Turnier: ${BUYIN} € Buy-in, Rebuys à ${BUYIN} €, Auszahlung 50/30/20 an die Top 3. Zählt nur fürs Wochenende, nicht für die Saison.`
+    :'Cash-Game: zählt wie bisher für die Saison (Bankroll, Punkte, Quali)'+(S.weekends.length?' und fürs Wochenende.':'.')}</div>
   <div class="card">
-    <label class="f">Datum</label><input type="date" id="ev-date" value="${todayD()}">
+    <label class="f">Datum</label><input type="date" id="ev-date" value="${date}" onchange="keepSetup();render()">
     <label class="f">Location</label>
-    <select id="ev-loc" onchange="document.getElementById('ev-loc-new').style.display=this.value==='__new'?'block':'none'">${LOCATIONS.map(l=>`<option>${esc(l)}</option>`).join('')}<option value="__new">Neue Location…</option></select>
-    <input type="text" id="ev-loc-new" placeholder="Name der Location" style="display:none">
-    <label class="f">Startzeit</label><input type="time" id="ev-start" value="${nowT()}">
+    <select id="ev-loc" onchange="document.getElementById('ev-loc-new').style.display=this.value==='__new'?'block':'none'">${LOCATIONS.map(l=>`<option ${l===locSel?'selected':''}>${esc(l)}</option>`).join('')}<option value="__new" ${locSel==='__new'?'selected':''}>Neue Location…</option></select>
+    <input type="text" id="ev-loc-new" placeholder="Name der Location" value="${esc(setupF.locNew)}" style="display:${locSel==='__new'?'block':'none'}">
+    <label class="f">Startzeit</label><input type="time" id="ev-start" value="${setupF.start||nowT()}">
+    ${w?`<label class="chk"><input type="checkbox" id="ev-wk" ${setupF.wkOn?'checked':''}> Zählt zur Wochenendwertung „${esc(w.name)}“</label>`
+       :(tour?`<div class="hint">⚠️ Kein Wochenende für dieses Datum angelegt – unter „Ranking → Wochenende“ anlegen, sonst zählt das Turnier nirgends.</div>`:'')}
   </div>
   <h2 class="sec">Wer spielt mit?</h2>
   <div class="card">
@@ -353,27 +448,33 @@ function setupView(){
       <input type="text" id="guest-name" placeholder="Gast hinzufügen" style="margin:0">
       <button class="btn secondary" style="width:auto;margin:0;padding:11px 16px" onclick="addGuest()">+</button>
     </div>
-    <div class="hint" id="selcount">${selCount()} Spieler ausgewählt (mind. 6 für Wertung)</div>
+    <div class="hint" id="selcount">${selCount()} Spieler ausgewählt${tour?'':' (mind. 6 für Wertung)'}</div>
   </div>
-  <button class="btn" onclick="startEvent()">Session starten ▶</button>`;
+  <button class="btn" onclick="startEvent()">${tour?'Turnier':'Session'} starten ▶</button>`;
 }
 function selCount(){return sel.size+guestList.length;}
-function togP(p){sel.has(p)?sel.delete(p):sel.add(p);render();}
-function togG(g){guestList=guestList.filter(x=>x!==g);render();}
-function addGuest(){const i=document.getElementById('guest-name');const v=i.value.trim();
+function togP(p){keepSetup();sel.has(p)?sel.delete(p):sel.add(p);render();}
+function togG(g){keepSetup();guestList=guestList.filter(x=>x!==g);render();}
+function addGuest(){keepSetup();const i=document.getElementById('guest-name');const v=i.value.trim();
   if(v&&!guestList.includes(v)&&!S.players.includes(v)){guestList.push(v);render();}}
 function startEvent(){
+  keepSetup();
   if(selCount()<2){toast('Spieler auswählen');return;}
-  let loc=document.getElementById('ev-loc').value;
-  if(loc==='__new')loc=document.getElementById('ev-loc-new').value.trim()||'Unbekannt';
-  S.active={id:Date.now(),nr:S.events.length+1,loc,
-    date:document.getElementById('ev-date').value||todayD(),
-    start:document.getElementById('ev-start').value||nowT(),end:'',finished:false,
-    parts:[...sel].map(n=>({n,g:false,ai:0,rb:0,gross:null,net:0,rank:0,score:0}))
-      .concat(guestList.map(n=>({n,g:true,ai:0,rb:0,gross:null,net:0,rank:0,score:0}))),
+  let loc=setupF.loc||LOCATIONS[0];
+  if(loc==='__new')loc=setupF.locNew.trim()||'Unbekannt';
+  const type=setupF.type==='tourney'?'tourney':'cash';
+  const date=setupF.date||todayD();
+  const w=wkForDate(date);
+  const mk=(n,g)=>({n,g,ai:0,rb:0,gross:null,net:0,rank:0,score:0,out:0});
+  S.active={id:Date.now(),type,nr:nextNr(type),loc,date,
+    start:setupF.start||nowT(),end:'',finished:false,
+    parts:[...sel].map(n=>mk(n,false)).concat(guestList.map(n=>mk(n,true))),
     firstAI:null,firstRB:null,fam:0,quotes:[],quads:[],bounty:[],
     sf:"",rf:"",dealer:"",actor:"",pot:"",wb:"",bb:"",rounds:"",games:""};
-  sel=new Set();guestList=[];save();render();
+  if(w)S.active.wk=setupF.wkOn?w.id:null;
+  sel=new Set();guestList=[];
+  setupF={type:'cash',date:null,loc:null,locNew:'',start:null,wkOn:true};
+  save();render();
 }
 
 /* ---------- LIVE ---------- */
@@ -389,7 +490,8 @@ function liveView(){
   const ev=S.active;
   const tAI=ev.parts.reduce((s,p)=>s+p.ai,0), tRB=ev.parts.reduce((s,p)=>s+p.rb,0);
   const pot=ev.parts.reduce((s,p)=>s+BUYIN+p.rb*BUYIN,0);
-  return `<h2 class="sec">Event ${ev.nr} · ${esc(ev.loc)} · ${dDate(ev.date)}</h2>
+  const w=wkOfEvent(ev);
+  return `<h2 class="sec">Event ${ev.nr} · ${esc(ev.loc)} · ${dDate(ev.date)}${w?' <span class="typebadge wk">'+esc(w.name)+'</span>':''}</h2>
   <div class="statbar">
     <div class="stat"><div class="v timer" id="elapsed">${elapsed()}</div><div class="l">seit ${ev.start}</div></div>
     <div class="stat"><div class="v">${ev.parts.length}</div><div class="l">Spieler</div></div>
@@ -412,7 +514,13 @@ function liveView(){
   ${ev.firstAI?`<div class="log">⚡ Erster All-in: <b>${esc(ev.firstAI.p)}</b> um ${ev.firstAI.t}</div>`:''}
   ${ev.firstRB?`<div class="log">💸 Erster Rebuy: <b>${esc(ev.firstRB.p)}</b> um ${ev.firstRB.t}</div>`:''}
 
-  <h2 class="sec">Event-Extras</h2>
+  ${extrasHTML(ev)}
+  <button class="btn" onclick="startSettle()">Session beenden → Abrechnung 🏁</button>
+  <button class="btn secondary" onclick="enterTV()">📺 Beamer-Modus (Live-Stand)</button>
+  <button class="btn secondary" id="abort-btn" onclick="abortEvent(this)">Spieltag verwerfen</button>`;
+}
+function extrasHTML(ev){
+  return `  <h2 class="sec">Event-Extras</h2>
   <div class="card">
     <div class="famrow"><span>👨‍👩‍👧 Familienrunden</span>
       <span style="display:flex;align-items:center;gap:8px">
@@ -446,10 +554,7 @@ function liveView(){
       <label class="f">Runden gespielt</label><input type="number" value="${esc(ev.rounds)}" onchange="fld('rounds',this.value)">
       <label class="f">Spiele gespielt</label><input type="number" value="${esc(ev.games)}" onchange="fld('games',this.value)">
     </details>
-  </div>
-  <button class="btn" onclick="startSettle()">Session beenden → Abrechnung 🏁</button>
-  <button class="btn secondary" onclick="enterTV()">📺 Beamer-Modus (Live-Stand)</button>
-  <button class="btn secondary" id="abort-btn" onclick="abortEvent(this)">Spieltag verwerfen</button>`;
+  </div>`;
 }
 function inc(i,k){const ev=S.active,p=ev.parts[i];p[k]++;
   const now=nowT();
@@ -472,6 +577,90 @@ function abortEvent(btn){
       if(b){b.textContent='Spieltag verwerfen';b.classList.remove('danger');}},3000);
     return;}
   abortArmed=false;S.active=null;save();render();
+}
+
+/* ---------- TURNIER ---------- */
+const potOf=ev=>ev.parts.reduce((s,p)=>s+BUYIN+p.rb*BUYIN,0);
+function tourPrizes(ev){            // Preisgeld je Platz (Index 0 = Platz 1)
+  const pot=potOf(ev), n=ev.parts.length;
+  const sh=PAYOUT.slice(0,Math.max(1,Math.min(n,PAYOUT.length)));
+  const rest=1-sh.reduce((a,b)=>a+b,0); sh[0]+=rest;   // z. B. 2 Spieler → 70/30
+  const pr=sh.map(x=>Math.round(pot*x*100)/100);
+  pr[0]=Math.round((pr[0]+pot-pr.reduce((a,b)=>a+b,0))*100)/100;  // Rundungsrest an den Sieger
+  return pr;
+}
+const tourLeft=ev=>ev.parts.filter(p=>!p.out);
+const tourPlace=(ev,p)=>p.out?ev.parts.length-p.out+1:null;
+function tourLiveView(){
+  const ev=S.active, n=ev.parts.length, left=tourLeft(ev);
+  const pot=potOf(ev), pr=tourPrizes(ev), tRB=ev.parts.reduce((s,p)=>s+p.rb,0);
+  const outs=ev.parts.map((p,i)=>({p,i})).filter(x=>x.p.out).sort((a,b)=>b.p.out-a.p.out);
+  const lastOut=outs.length?outs[0].p.out:0;
+  const w=wkOfEvent(ev);
+  return `<h2 class="sec">Turnier ${ev.nr} · ${esc(ev.loc)} · ${dDate(ev.date)}${w?' <span class="typebadge wk">'+esc(w.name)+'</span>':''}</h2>
+  <div class="statbar">
+    <div class="stat"><div class="v timer" id="elapsed">${elapsed()}</div><div class="l">seit ${ev.start}</div></div>
+    <div class="stat"><div class="v">${left.length}/${n}</div><div class="l">Im Spiel</div></div>
+    <div class="stat"><div class="v">${tRB}</div><div class="l">Rebuys</div></div>
+    <div class="stat"><div class="v">${Math.round(pot)} €</div><div class="l">Pot</div></div>
+  </div>
+  <div class="log">💰 Auszahlung: ${pr.map((v,k)=>`<b>${k+1}.</b> ${fmt(v)}`).join(' · ')}</div>
+  ${left.length>1?`<div class="card">
+    ${ev.parts.map((p,i)=>p.out?'':`<div class="prow">
+      <div class="nm">${esc(p.n)}${p.g?' <span class="g">Gast</span>':''}<br><span class="inv">Einsatz ${fmt(BUYIN+p.rb*BUYIN)}</span><br>
+        <button class="outbtn" onclick="bust(${i})">✕ Raus</button></div>
+      <div class="cgroup"><div class="lbl">All-in</div><div class="row">
+        <button class="cbtn minus" onclick="dec(${i},'ai')">−</button>
+        <span class="cval">${p.ai}</span>
+        <button class="cbtn ai" onclick="inc(${i},'ai')">+</button></div></div>
+      <div class="cgroup"><div class="lbl">Rebuy</div><div class="row">
+        <button class="cbtn minus" onclick="dec(${i},'rb')">−</button>
+        <span class="cval">${p.rb}</span>
+        <button class="cbtn rb" onclick="inc(${i},'rb')">+</button></div></div>
+    </div>`).join('')}
+    <div class="hint">„Raus“ erst tippen, wenn der Spieler endgültig ausgeschieden ist (kein Rebuy mehr). Wer jetzt rausgeht, wird Platz ${left.length}.</div>
+  </div>`:`<div class="card" style="text-align:center">
+    <div style="font-size:13px;color:var(--muted)">Turniersieger</div>
+    <div style="font-size:26px;font-weight:800;margin-top:4px">🏆 ${esc(left[0]?left[0].n:'–')}</div>
+    <div class="posv" style="font-weight:800">${fmt(pr[0])}</div>
+  </div>
+  <button class="btn" onclick="finishTour()">Turnier abschließen ✔</button>`}
+  ${outs.length?`<h2 class="sec">Ausgeschieden</h2><div class="card">
+    ${outs.map(({p})=>{const pl=tourPlace(ev,p);
+      return `<div class="prow out"><div class="nm"><span class="place">Platz ${pl}</span> · ${esc(p.n)}
+        <br><span class="inv">Einsatz ${fmt(BUYIN+p.rb*BUYIN)}${pr[pl-1]?' · Preis '+fmt(pr[pl-1]):''} · ${wkPoints(pl)} WE-Pkt</span></div>
+        ${p.out===lastOut?`<button class="btn secondary" style="width:auto;margin:0;padding:8px 12px;font-size:13px" onclick="unbust()">↩ Zurück</button>`:''}
+      </div>`;}).join('')}
+  </div>`:''}
+  ${extrasHTML(ev)}
+  <button class="btn secondary" onclick="enterTV()">📺 Beamer-Modus (Live-Stand)</button>
+  <button class="btn secondary" id="abort-btn" onclick="abortEvent(this)">Turnier verwerfen</button>`;
+}
+function bust(i){
+  const ev=S.active, p=ev.parts[i]; if(p.out)return;
+  p.out=Math.max(0,...ev.parts.map(x=>x.out||0))+1;
+  if(tourLeft(ev).length===1&&!ev.end)ev.end=nowT();
+  save();render();
+}
+function unbust(){
+  const ev=S.active, mx=Math.max(0,...ev.parts.map(x=>x.out||0)); if(!mx)return;
+  ev.parts.find(x=>x.out===mx).out=0; ev.end='';
+  save();render();
+}
+function finishTour(){
+  const ev=S.active, n=ev.parts.length;
+  if(tourLeft(ev).length!==1){toast('Es muss genau ein Spieler übrig sein');return;}
+  const pr=tourPrizes(ev);
+  ev.parts.forEach(p=>{
+    p.rank=p.out?n-p.out+1:1;
+    p.gross=pr[p.rank-1]||0;
+    p.net=Math.round((p.gross-(BUYIN+p.rb*BUYIN))*100)/100;
+    p.score=0;                       // Turniere zählen nicht für die Saison-Punkte
+  });
+  if(!ev.end)ev.end=nowT();
+  ev.finished=true; S.events.push(ev); S.active=null; save();
+  tab='hist'; openEv=ev.id; render();
+  toast('Turnier '+ev.nr+' gespeichert 🏆');
 }
 
 /* ---------- SETTLE ---------- */
@@ -529,7 +718,7 @@ function finishEvent(){
 function seasonTotals(){
   const map={};
   S.players.forEach(p=>map[p]={n:p,bank:0,score:0,wins:0,ev:0,ai:0,rb:0});
-  S.events.filter(e=>e.finished).forEach(e=>e.parts.forEach(p=>{
+  cashEvents().forEach(e=>e.parts.forEach(p=>{
     if(p.g)return; const t=map[p.n]; if(!t)return;
     t.bank=Math.round((t.bank+(p.net||0))*100)/100;
     t.score+=p.score||0; t.ev++; t.ai+=p.ai||0; t.rb+=p.rb||0;
@@ -539,8 +728,8 @@ function seasonTotals(){
 }
 function lbView(){
   const rows=seasonTotals().sort((a,b)=>b.bank-a.bank||b.score-a.score);
-  const evCount=S.events.filter(e=>e.finished).length;
-  return `<h2 class="sec">Saison-Leaderboard · YTD · nach Bankroll</h2>
+  const evCount=cashEvents().length;
+  return `${lbToggle()}<h2 class="sec">Saison-Leaderboard · YTD · nach Bankroll</h2>
   <div class="card" style="padding:8px 12px">
     <table class="lb"><tr><th></th><th>Spieler</th><th>€</th><th>Pkt</th><th>W</th><th>Ev</th><th>AI</th><th>RB</th></tr>
     ${rows.map((r,i)=>{
@@ -557,11 +746,80 @@ function lbView(){
   <button class="btn secondary" onclick="copyText(lbWhatsApp())">📤 Leaderboard für WhatsApp kopieren</button>`;
 }
 
+/* ---------- WOCHENENDWERTUNG ---------- */
+function lbToggle(){
+  return `<div class="toggle-lb" style="margin-top:14px">
+    <button class="${lbView2==='wk'?'':'on'}" onclick="lbView2='season';render()">📅 Saison</button>
+    <button class="${lbView2==='wk'?'on':''}" onclick="lbView2='wk';render()">🎉 Wochenende</button></div>`;
+}
+function selWeekend(){
+  return wkById(wkSel)||curWeekend()||S.weekends[S.weekends.length-1]||null;
+}
+function addDays(d,k){const x=new Date(d+'T12:00:00');x.setDate(x.getDate()+k);return x.toISOString().slice(0,10);}
+function wkForm(w){
+  const from=w?w.from:todayD(), to=w?w.to:addDays(todayD(),2);
+  return `<div class="card">
+    <label class="f">Name</label><input type="text" id="wk-name" value="${esc(w?w.name:'Pokerwochenende '+from.slice(0,4))}">
+    <label class="f">Von</label><input type="date" id="wk-from" value="${from}">
+    <label class="f">Bis</label><input type="date" id="wk-to" value="${to}">
+    <div class="hint">Alle Cash-Games und Turniere in diesem Zeitraum zählen zur Wochenendwertung.</div>
+    <button class="btn" onclick="saveWeekend(${w?w.id:'null'})">${w?'Speichern':'Wochenende anlegen'}</button>
+    ${w?`<button class="btn secondary" onclick="wkEdit=false;render()">Abbrechen</button>`:''}
+  </div>`;
+}
+function saveWeekend(id){
+  const name=document.getElementById('wk-name').value.trim()||'Pokerwochenende';
+  let from=document.getElementById('wk-from').value, to=document.getElementById('wk-to').value;
+  if(!from||!to){toast('Zeitraum angeben');return;}
+  if(to<from)[from,to]=[to,from];
+  const clash=S.weekends.find(w=>w.id!==id&&from<=w.to&&to>=w.from);
+  if(clash){toast('Überschneidet sich mit „'+clash.name+'“');return;}
+  if(id){const w=wkById(id); Object.assign(w,{name,from,to});}
+  else{id=Date.now(); S.weekends.push({id,name,from,to});}
+  wkSel=id; wkEdit=false; save(); render(); toast('Wochenende gespeichert ✓');
+}
+function wkView(){
+  const w=selWeekend();
+  if(!w)return lbToggle()+`<h2 class="sec">Wochenende anlegen</h2>`+wkForm(null);
+  if(wkEdit==='new')return lbToggle()+`<h2 class="sec">Neues Wochenende</h2>`+wkForm(null);
+  if(wkEdit)return lbToggle()+`<h2 class="sec">Wochenende bearbeiten</h2>`+wkForm(w);
+  const {games,rows}=wkTotals(w);
+  const picker=S.weekends.length>1?`<select onchange="wkSel=+this.value;render()" style="margin:0 0 10px">${
+    S.weekends.slice().sort((a,b)=>b.from.localeCompare(a.from)).map(x=>`<option value="${x.id}" ${x.id===w.id?'selected':''}>${esc(x.name)} (${dDate(x.from)}–${dDate(x.to)})</option>`).join('')}</select>`:'';
+  const nC=games.filter(isCash).length, nT=games.filter(isTour).length;
+  const table=rows.length?`<table class="lb"><tr><th></th><th>Spieler</th><th>Pkt</th><th>€</th><th>W</th><th>Sp</th></tr>
+    ${rows.map(r=>`<tr><td class="pos ${r.rank===1?'pos1':''}">${r.rank}</td><td>${esc(r.n)}</td>
+      <td><b>${r.pts}</b></td><td><span class="${r.net<0?'neg':'posv'}">${fmt(r.net)}</span></td><td>${r.wins}</td><td>${r.games}</td></tr>`).join('')}
+    </table>`:'<div class="hint">Noch keine abgeschlossenen Spiele an diesem Wochenende.</div>';
+  const matrix=games.length?`<h2 class="sec">Punkte je Spiel</h2><div class="card mwrap" style="padding:8px 12px">
+    <table class="matrix"><tr><th>Spieler</th>${games.map(e=>`<th>${evShort(e)}</th>`).join('')}<th>Σ</th></tr>
+    ${rows.map(r=>`<tr><td>${esc(r.n)}</td>${games.map(e=>{const v=r.per[e.id];
+      return v===undefined?'<td class="z">·</td>':`<td class="${v?'':'z'}">${v}</td>`;}).join('')}<td><b>${r.pts}</b></td></tr>`).join('')}
+    </table></div>
+    <div class="hint">E = Cash-Game (Liga) · T = Turnier · · = nicht mitgespielt</div>`:'';
+  return lbToggle()+picker+`<h2 class="sec">${esc(w.name)} · ${dDate(w.from)}–${dDate(w.to)}</h2>
+  <div class="card" style="padding:8px 12px">${table}</div>
+  <div class="hint">${nC} Cash-Game${nC===1?'':'s'} · ${nT} Turnier${nT===1?'':'e'} · Punkte je Spiel: 15/10/8/6/4/2 für Platz 1–6 · Gleichstand: € netto, dann Siege (W)</div>
+  ${matrix}
+  <button class="btn secondary" onclick="enterTV()">📺 Beamer-Modus</button>
+  <button class="btn secondary" onclick="copyText(wkWhatsApp(${w.id}))">📤 Wochenend-Ranking für WhatsApp kopieren</button>
+  <button class="btn secondary" onclick="wkEdit=true;wkSel=${w.id};render()">✏️ Wochenende bearbeiten</button>
+  <button class="btn secondary" onclick="wkEdit='new';render()">＋ Weiteres Wochenende anlegen</button>`;
+}
+function wkWhatsApp(id,top){
+  const w=wkById(id); if(!w)return'';
+  const {games,rows}=wkTotals(w);
+  const list=top?rows.slice(0,top):rows;
+  let t=`🎉 *${w.name} – ${top?'Top '+top:'Gesamtranking'}* (${games.length} Spiele):\n`;
+  list.forEach(r=>{t+=`${r.rank}. ${r.n} – ${r.pts} Pkt · ${fmtS(r.net)}${r.wins?' · '+r.wins+'×🏆':''}\n`;});
+  return t;
+}
+
 /* ---------- BANKROLL-VERLAUF ---------- */
 const CH={W:520,H:260,L:36,R:14,T:12,B:22};
 function toggleBank(n){ if(bankSel.has(n))bankSel.delete(n); else bankSel.add(n); render(); }
 function bankData(){
-  const evs=S.events.filter(e=>e.finished).sort((a,b)=>a.nr-b.nr);
+  const evs=cashEvents().sort((a,b)=>a.nr-b.nr);
   const names=seasonTotals().map(t=>t.n);
   const data=names.map(n=>{
     let c=0; const cumPts=[0], per=[];
@@ -669,10 +927,34 @@ function renderTV(){
     `<span class="nm">${esc(r.n)}</span>`+
     `<span class="val"><span class="sub">${r.score} Pkt</span></span>`+
     `<span class="val ${r.bank<0?'neg':'posv'}">${fmt(r.bank)}</span></div>`).join('');
-  const seasonPanel=`<div class="tv-panel"><div class="tv-h">Saison · YTD · nach Bankroll · ${S.events.filter(e=>e.finished).length} Events</div>`+
+  const cw=curWeekend();
+  let seasonPanel=`<div class="tv-panel"><div class="tv-h">Saison · YTD · nach Bankroll · ${cashEvents().length} Events</div>`+
     `<div class="tv-list">${seasonRows||'<div class="hint">Noch keine Wertung.</div>'}</div></div>`;
+  if(cw){
+    const {games,rows}=wkTotals(cw);
+    const wr=rows.slice(0,13).map(r=>`<div class="tv-row"><span class="r ${r.rank===1?'r1':''}">${r.rank}</span>`+
+      `<span class="nm">${esc(r.n)}</span>`+
+      `<span class="val"><span class="sub">${fmtS(r.net)}</span></span>`+
+      `<span class="val">${r.pts}<span class="sub"> Pkt</span></span></div>`).join('');
+    seasonPanel=`<div class="tv-panel"><div class="tv-h">🎉 ${esc(cw.name)} · ${games.length} Spiele</div>`+
+      `<div class="tv-list">${wr||'<div class="hint">Noch kein Spiel abgeschlossen.</div>'}</div></div>`;
+  }
   let today;
-  if(ev){
+  if(ev&&isTour(ev)){
+    const n=ev.parts.length, left=tourLeft(ev), pr=tourPrizes(ev);
+    const outs=ev.parts.filter(p=>p.out).sort((a,b)=>b.out-a.out);
+    const rows=left.map(p=>`<div class="tv-row"><span class="r">•</span><span class="nm">${esc(p.n)}</span>`+
+        `<span class="val">${p.rb}<span class="sub"> RB</span></span></div>`).join('')+
+      outs.map(p=>{const pl=tourPlace(ev,p); return `<div class="tv-row" style="opacity:.55"><span class="r">${pl}</span>`+
+        `<span class="nm">${esc(p.n)}</span><span class="val"><span class="sub">${pr[pl-1]?fmt(pr[pl-1])+' · ':''}${wkPoints(pl)} Pkt</span></span></div>`;}).join('');
+    today=`<div class="tv-panel"><div class="tv-h">Turnier ${ev.nr} · ${esc(ev.loc)}</div>`+
+      `<div class="tv-stats">`+
+        `<div class="tv-stat"><div class="v" id="tv-elapsed">${elapsed()||'–'}</div><div class="l">seit ${ev.start}</div></div>`+
+        `<div class="tv-stat"><div class="v">${left.length}/${n}</div><div class="l">Im Spiel</div></div>`+
+        `<div class="tv-stat"><div class="v">${Math.round(potOf(ev))} €</div><div class="l">Pot</div></div>`+
+        `<div class="tv-stat"><div class="v" style="font-size:2.4vmin">${pr.map(v=>Math.round(v)).join('/')} €</div><div class="l">Auszahlung</div></div>`+
+      `</div><div class="tv-list">${rows}</div></div>`;
+  } else if(ev){
     const pot=ev.parts.reduce((s,p)=>s+BUYIN+p.rb*BUYIN,0);
     const tAI=ev.parts.reduce((s,p)=>s+p.ai,0), tRB=ev.parts.reduce((s,p)=>s+p.rb,0);
     let rows;
@@ -698,17 +980,17 @@ function renderTV(){
       (ev.firstAI?`<div class="hint" style="font-size:1.8vmin;margin-top:1vh;flex:none">⚡ Erster All-in: ${esc(ev.firstAI.p)} · ${ev.firstAI.t}${ev.firstRB?`   💸 Erster Rebuy: ${esc(ev.firstRB.p)} · ${ev.firstRB.t}`:''}</div>`:'')+
       `</div>`;
   } else {
-    const last=[...S.events].filter(e=>e.finished).sort((a,b)=>b.nr-a.nr)[0];
-    const win=last?[...last.parts].sort((a,b)=>b.net-a.net)[0]:null;
+    const last=doneEvents().sort((a,b)=>b.id-a.id)[0];
+    const win=last?[...last.parts].sort((a,b)=>(a.rank||99)-(b.rank||99))[0]:null;
     today=`<div class="tv-panel" style="justify-content:center;align-items:center;text-align:center">`+
       `<div class="tv-h">Kein aktiver Spieltag</div>`+
-      (last?`<div style="font-size:2.4vmin;color:var(--muted)">Letzter Spieltag · Event ${last.nr} · ${esc(last.loc)}</div>`+
+      (last?`<div style="font-size:2.4vmin;color:var(--muted)">Letzter Spieltag · ${evLabel(last)} · ${esc(last.loc)}</div>`+
         `<div style="font-size:5.4vmin;font-weight:800;margin-top:1.4vh">🏆 ${esc(win.n)}</div>`+
         `<div class="posv" style="font-size:3.2vmin;font-weight:800">${fmtS(win.net)}</div>`
         :`<div class="hint">Starte einen Spieltag im Reiter „Spieltag".</div>`)+`</div>`;
   }
   root.innerHTML=`<div class="tv-head">`+
-    `<div><div class="tv-brand">♠ tesa Poker League 2026</div><div class="tv-sub">${ev?'Live-Stand':'Saison-Übersicht'}</div></div>`+
+    `<div><div class="tv-brand">♠ tesa Poker League 2026</div><div class="tv-sub">${ev?'Live-Stand':cw?'Wochenend-Übersicht':'Saison-Übersicht'}</div></div>`+
     `<div class="tv-right"><div class="tv-clock" id="tv-clock">${nowT()}</div>`+
     `<button class="tv-exit" onclick="exitTV()">✕ Beenden</button></div></div>`+
     `<div class="tv-grid"><div class="tv-col">${today}</div><div class="tv-col">${seasonPanel}</div></div>`;
@@ -718,15 +1000,15 @@ function renderTV(){
 /* ---------- HISTORY ---------- */
 let openEv=null;
 function histView(){
-  const evs=[...S.events].filter(e=>e.finished).sort((a,b)=>b.nr-a.nr);
+  const evs=doneEvents().sort((a,b)=>(b.date+(b.start||'')).localeCompare(a.date+(a.start||''))||b.id-a.id);
   return `<h2 class="sec">Spieltage</h2>
   <div class="card">
   ${evs.length?evs.map(e=>{
-    const win=[...e.parts].sort((a,b)=>b.net-a.net)[0];
-    const open=openEv===e.id;
+    const win=[...e.parts].sort((a,b)=>(a.rank||99)-(b.rank||99))[0];
+    const open=openEv===e.id, w=wkOfEvent(e);
     return `<div class="evrow">
       <div class="hd" onclick="openEv=${open?'null':e.id};render()" style="cursor:pointer">
-        <span class="t">Event ${e.nr} · ${esc(e.loc)}</span><span class="d">${dDate(e.date)} ${open?'▾':'▸'}</span>
+        <span class="t">${evLabel(e)} · ${esc(e.loc)}${isTour(e)?'<span class="typebadge tour">Turnier</span>':''}${w?'<span class="typebadge wk">🎉</span>':''}</span><span class="d">${dDate(e.date)} ${open?'▾':'▸'}</span>
       </div>
       <div class="win">🏆 ${esc(win?win.n:'–')} ${win?fmtS(win.net):''}</div>
       ${open?evDetail(e):''}
@@ -739,11 +1021,14 @@ function histView(){
 }
 function evDetail(e){
   const sorted=[...e.parts].sort((a,b)=>(a.rank||99)-(b.rank||99));
+  const w=wkOfEvent(e), cash=isCash(e);
   return `<table class="lb" style="margin-top:8px">
-    <tr><th></th><th>Spieler</th><th>Netto</th><th>Pkt</th><th>AI</th><th>RB</th></tr>
+    <tr><th></th><th>Spieler</th>${cash?'':'<th>Preis</th>'}<th>Netto</th>${cash?'<th>Pkt</th>':''}${w?'<th>WE</th>':''}<th>AI</th><th>RB</th></tr>
     ${sorted.map(p=>`<tr><td class="pos">${p.rank||'–'}</td><td>${esc(p.n)}${p.g?' <span class="badge">Gast</span>':''}</td>
-      <td><span class="${p.net<0?'neg':'posv'}">${fmtS(p.net)}</span></td><td>${p.score||0}</td><td>${p.ai}</td><td>${p.rb}</td></tr>`).join('')}
+      ${cash?'':`<td>${p.gross?fmt(p.gross):'–'}</td>`}
+      <td><span class="${p.net<0?'neg':'posv'}">${fmtS(p.net)}</span></td>${cash?`<td>${p.score||0}</td>`:''}${w?`<td>${wkPoints(p.rank)}</td>`:''}<td>${p.ai}</td><td>${p.rb}</td></tr>`).join('')}
   </table>
+  ${cash?'':'<div class="hint">Turnier · zählt nicht für die Saison'+(w?', nur für „'+esc(w.name)+'“':'')+' · WE = Wochenendpunkte</div>'}
   <div class="log" style="margin-top:6px">
     ${e.start?'⏱ '+e.start+(e.end?'–'+e.end:''):''} ${e.fam?' · 👨‍👩‍👧 '+e.fam+' Familienrunden':''}
     ${e.firstAI?' · ⚡ '+esc(e.firstAI.p)+' ('+e.firstAI.t+')':''}
@@ -769,10 +1054,14 @@ function evWhatsApp(id){
   const e=S.events.find(x=>x.id===id); if(!e)return'';
   const sorted=[...e.parts].sort((a,b)=>(a.rank||99)-(b.rank||99));
   const tAI=e.parts.reduce((s,p)=>s+p.ai,0),tRB=e.parts.reduce((s,p)=>s+p.rb,0);
-  let t=`🃏 *tesa Poker League – Event ${e.nr}*\n📍 ${e.loc}, ${dDate(e.date)}\n`;
+  const w=wkOfEvent(e), cash=isCash(e);
+  let t=`🃏 *tesa Poker League – ${evLabel(e)}*${cash?'':' 🏆'}\n📍 ${e.loc}, ${dDate(e.date)}\n`;
+  if(w)t+=`🎉 ${w.name}\n`;
   if(e.start)t+=`⏱ ${e.start}${e.end?'–'+e.end:''} Uhr\n`;
   t+=`👥 ${e.parts.length} Spieler\n\n🏆 *Ergebnis:*\n`;
-  sorted.forEach(p=>{t+=`${p.rank}. ${p.n}${p.g?' (Gast)':''}  ${fmtS(p.net)}${p.score?'  ·  '+p.score+' Pkt':''}\n`;});
+  sorted.forEach(p=>{
+    if(cash)t+=`${p.rank}. ${p.n}${p.g?' (Gast)':''}  ${fmtS(p.net)}${p.score?'  ·  '+p.score+' Pkt':''}${w&&wkPoints(p.rank)?'  ·  '+wkPoints(p.rank)+' WE-Pkt':''}\n`;
+    else t+=`${p.rank}. ${p.n}${p.gross?'  💰 '+fmt(p.gross):''}  (${fmtS(p.net)})${wkPoints(p.rank)?'  ·  '+wkPoints(p.rank)+' WE-Pkt':''}\n`;});
   t+=`\n🎲 All-ins: ${tAI} · Rebuys: ${tRB}\n`;
   if(e.firstAI)t+=`⚡ Erster All-in: ${e.firstAI.p} (${e.firstAI.t})\n`;
   if(e.firstRB)t+=`💸 Erster Rebuy: ${e.firstRB.p} (${e.firstRB.t})\n`;
@@ -783,7 +1072,8 @@ function evWhatsApp(id){
   if(e.rf)t+=`👑 Royal Flush: ${e.rf}\n`;
   if(e.pot)t+=`💰 Größter Pot: ${e.pot}\n`;
   if(e.quotes.length)t+=`\n💬 _${e.quotes.join('_\n💬 _')}_\n`;
-  t+='\n'+lbWhatsApp(3);
+  if(w)t+='\n'+wkWhatsApp(w.id,3);
+  if(cash)t+='\n'+lbWhatsApp(3);
   return t;
 }
 function lbWhatsApp(top){
@@ -838,7 +1128,7 @@ function cloudListen(){
       const inc=JSON.parse(d.blob);
       if(!inc||!inc.events||!inc.players){cloudDot('ok');return;}
       cloud.ts=d.ts; cloud.applying=true;
-      S=inc;
+      S=inc; normalize();
       try{localStorage.setItem(KEY,d.blob);}catch(e){}
       render(); cloud.applying=false; cloudDot('ok');
     }catch(e){cloud.applying=false;cloudDot('ok');}
