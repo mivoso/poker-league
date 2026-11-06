@@ -1036,7 +1036,17 @@ function evDetail(e){
     ${e.bounty.length?' · 🎯 '+esc(e.bounty.join(', ')):''}
   </div>
   ${e.quotes.length?`<div class="log">💬 ${e.quotes.map(esc).join(' · ')}</div>`:''}
+  <details class="xtr"><summary>✏️ Location ändern</summary>
+    <div style="display:flex;gap:8px"><input type="text" id="loc-edit-${e.id}" value="${esc(e.loc)}" style="margin:0">
+    <button class="btn secondary" style="width:auto;margin:0;padding:11px 14px" onclick="setLoc(${e.id})">Speichern</button></div>
+  </details>
   <button class="btn secondary" onclick="copyText(evWhatsApp(${e.id}))">📤 WhatsApp-Bericht kopieren</button>`;
+}
+function setLoc(id){
+  const e=S.events.find(x=>x.id===id), i=document.getElementById('loc-edit-'+id);
+  const v=i?i.value.trim():''; if(!e||!v){toast('Location eingeben');return;}
+  if(v===e.loc)return;
+  e.loc=v; save(); render(); toast('Location geändert ✓');
 }
 function showBackup(){
   document.getElementById('backup-area').innerHTML=
